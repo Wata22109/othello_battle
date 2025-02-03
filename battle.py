@@ -10,7 +10,6 @@ from collections import defaultdict
 # 各アルゴリズムのクラスをインポート
 from minimax1 import OthelloBoard as Board1, OthelloAI as AI1
 from minimax2 import OthelloGame as Board2, MinimaxAI as AI2
-from minimax3 import Othello as Board3
 from A_star import OthelloState as Board4, OthelloAI as AI4
 from monte_carlo import Othello as Board5
 
@@ -48,17 +47,6 @@ class AI2Adapter:
                 print("Falling back to first available move")
                 return moves[0]
             return None
-
-class AI3Adapter:
-    def __init__(self, time_limit):
-        self.game = Board3()
-        self.time_limit = float(time_limit)
-        
-    def get_move(self, board, player):
-        self.game.board = copy.deepcopy(board)
-        self.game.current_player = player
-        _, move = self.game.negamax(4, float('-inf'), float('inf'), player)
-        return move
 
 class AI4Adapter:
     def __init__(self, time_limit):
@@ -117,7 +105,7 @@ class TournamentSystem:
         self.match_results = []
         self.current_match = 0
         self.total_matches = 0
-        
+
     def setup_gui(self):
         # メインフレーム
         main_frame = ttk.Frame(self.root, padding="10")
@@ -201,7 +189,57 @@ class TournamentSystem:
                 elif board[i][j] == 2:  # 白
                     self.canvas.create_oval(x-20, y-20, x+20, y+20, fill='white')
 
+    def is_valid_move(self, row: int, col: int, board: list, player: int) -> bool:
+        if board[row][col] != 0:
+            return False
+            
+        directions = [(0,1), (1,0), (0,-1), (-1,0), (1,1), (-1,-1), (1,-1), (-1,1)]
+        opponent = 3 - player
+        
+        for dx, dy in directions:
+            x, y = row + dx, col + dy
+            if not (0 <= x < 8 and 0 <= y < 8) or board[x][y] != opponent:
+                continue
+                
+            x, y = x + dx, y + dy
+            while 0 <= x < 8 and 0 <= y < 8:
+                if board[x][y] == 0:
+                    break
+                if board[x][y] == player:
+                    return True
+                x, y = x + dx, y + dy
+        return False
+
+    def make_move(self, row: int, col: int, board: list, player: int) -> bool:
+        if not self.is_valid_move(row, col, board, player):
+            return False
+            
+        board[row][col] = player
+        directions = [(0,1), (1,0), (0,-1), (-1,0), (1,1), (-1,-1), (1,-1), (-1,1)]
+        opponent = 3 - player
+        
+        for dx, dy in directions:
+            x, y = row + dx, col + dy
+            to_flip = []
+            
+            while 0 <= x < 8 and 0 <= y < 8 and board[x][y] == opponent:
+                to_flip.append((x, y))
+                x, y = x + dx, y + dy
+                
+            if 0 <= x < 8 and 0 <= y < 8 and board[x][y] == player:
+                for flip_x, flip_y in to_flip:
+                    board[flip_x][flip_y] = player
+                    
+        return True
+
+    def has_valid_moves(self, board: list, player: int) -> bool:
+        return any(self.is_valid_move(i, j, board, player) 
+                  for i in range(8) for j in range(8))
+
     def play_single_game(self, black_ai: object, white_ai: object) -> dict:
+        def is_board_full():
+            return all(cell != 0 for row in board for cell in row)
+
         board = [[0] * 8 for _ in range(8)]
         # 初期配置
         board[3][3] = board[4][4] = 2  # 白
@@ -209,128 +247,85 @@ class TournamentSystem:
         
         moves_history = []
         times_history = []
-        
-        def is_valid_move(row: int, col: int, player: int) -> bool:
-            if board[row][col] != 0:
-                return False
-            
-            directions = [(0,1), (1,0), (0,-1), (-1,0), 
-                         (1,1), (-1,-1), (1,-1), (-1,1)]
-            
-            opponent = 3 - player
-            for dx, dy in directions:
-                x, y = row + dx, col + dy
-                has_opponent = False
-                
-                while 0 <= x < 8 and 0 <= y < 8 and board[x][y] == opponent:
-                    has_opponent = True
-                    x, y = x + dx, y + dy
-                    
-                if has_opponent and 0 <= x < 8 and 0 <= y < 8 and board[x][y] == player:
-                    return True
-            return False
-        
-        def make_move(row: int, col: int, player: int) -> None:
-            if not is_valid_move(row, col, player):
-                return
-                
-            board[row][col] = player
-            directions = [(0,1), (1,0), (0,-1), (-1,0), 
-                         (1,1), (-1,-1), (1,-1), (-1,1)]
-            
-            opponent = 3 - player
-            for dx, dy in directions:
-                x, y = row + dx, col + dy
-                to_flip = []
-                
-                while 0 <= x < 8 and 0 <= y < 8 and board[x][y] == opponent:
-                    to_flip.append((x, y))
-                    x, y = x + dx, y + dy
-                    
-                if 0 <= x < 8 and 0 <= y < 8 and board[x][y] == player:
-                    for flip_x, flip_y in to_flip:
-                        board[flip_x][flip_y] = player
-        
-        def has_valid_moves(player: int) -> bool:
-            for i in range(8):
-                for j in range(8):
-                    if is_valid_move(i, j, player):
-                        return True
-            return False
-        
         consecutive_passes = 0
+        
         while True:
             current_ai = black_ai if len(moves_history) % 2 == 0 else white_ai
             player = 1 if len(moves_history) % 2 == 0 else 2
             
-            if not has_valid_moves(player):
+            # 盤面が全て埋まっているか確認
+            if is_board_full():
+                print("Game over - board is full")
+                break
+
+            # 有効な手があるか確認
+            if not self.has_valid_moves(board, player):
                 print(f"Player {player} has no valid moves (pass)")
                 consecutive_passes += 1
                 if consecutive_passes >= 2:
-                    print("Game over - two consecutive passes")
+                    print("Game over - both players have no valid moves")
                     break
-                if not has_valid_moves(3 - player):
-                    print("Game over - no valid moves for both players")
-                    break
+                moves_history.append(None)
+                times_history.append(0)
                 continue
-            consecutive_passes = 0  # リセット
             
             start_time = time.time()
             try:
-                print(f"Player {player} thinking...")
                 move = current_ai.get_move(board, player)
                 end_time = time.time()
-                print(f"Move received: {move}")
                 
                 if move is None:
-                    print(f"Player {player} has no valid moves")
+                    print(f"Player {player} returned None as move")
+                    consecutive_passes += 1
+                    moves_history.append(None)
+                    times_history.append(end_time - start_time)
                     continue
                 
-                # 手の検証
-                if not is_valid_move(move[0], move[1], player):
-                    print(f"Invalid move suggested by AI: {move}")
+                print(f"Move received: {move}")
+                if self.is_valid_move(move[0], move[1], board, player):
+                    print(f"Applying move {move} for player {player}")
+                    self.make_move(move[0], move[1], board, player)
+                    consecutive_passes = 0
+                    moves_history.append(move)
+                    times_history.append(end_time - start_time)
+                    
+                    # 盤面の状態を出力
+                    black_count = sum(row.count(1) for row in board)
+                    white_count = sum(row.count(2) for row in board)
+                    print(f"Current score - Black: {black_count}, White: {white_count}")
+                else:
+                    print(f"Invalid move {move} suggested by player {player}")
+                    consecutive_passes += 1
+                    moves_history.append(None)
+                    times_history.append(end_time - start_time)
                     continue
-                
-                # 手を適用
-                print(f"Applying move {move} for player {player}")
-                make_move(move[0], move[1], player)
-                moves_history.append(move)
-                times_history.append(end_time - start_time)
-                
-                # 盤面の状態を出力
-                black_count = sum(row.count(1) for row in board)
-                white_count = sum(row.count(2) for row in board)
-                print(f"Current score - Black: {black_count}, White: {white_count}")
-                
-                # GUI更新
-                self.draw_board(board)
-                self.root.update()
-                time.sleep(0)  # 動きを見やすくするため
                 
             except Exception as e:
-                print(f"Error occurred: {e}")
+                print(f"Error occurred for player {player}: {e}")
                 import traceback
                 traceback.print_exc()
-                break
+                end_time = time.time()
+                consecutive_passes += 1
+                moves_history.append(None)
+                times_history.append(end_time - start_time)
+                continue
+            
+            # GUI更新
+            self.draw_board(board)
+            self.root.update()
+            time.sleep(0.1)
         
-        # ゲーム終了時の最終スコア計算
+        # ゲーム終了時のスコア計算
         black_score = sum(row.count(1) for row in board)
         white_score = sum(row.count(2) for row in board)
         print(f"Game finished - Final score - Black: {black_score}, White: {white_score}")
         
-        # 結果を辞書にまとめて返す
-        result = {
+        return {
             'black_score': black_score,
             'white_score': white_score,
             'moves': moves_history,
             'times': times_history
         }
-        
-        # GUI更新を最後に一度行う
-        self.draw_board(board)
-        self.root.update()
-        
-        return result
 
     def start_tournament(self):
         algo1_name = self.algo1.get()
@@ -346,27 +341,38 @@ class TournamentSystem:
             if i % 2 == 0:
                 black_ai = self.create_ai(algo1_name)
                 white_ai = self.create_ai(algo2_name)
+                first_player = algo1_name
+                second_player = algo2_name
             else:
                 black_ai = self.create_ai(algo2_name)
                 white_ai = self.create_ai(algo1_name)
+                first_player = algo2_name
+                second_player = algo1_name
                 
             self.current_match = i + 1
             self.info_label.config(text=f"対戦 {i+1}/{match_count} 実行中...")
+            self.root.update()
             
             try:
                 result = self.play_single_game(black_ai, white_ai)
                 
                 # 結果を記録
                 if result['black_score'] > result['white_score']:
-                    winner = algo1_name if i % 2 == 0 else algo2_name
+                    winner = first_player
                 elif result['white_score'] > result['black_score']:
-                    winner = algo2_name if i % 2 == 0 else algo1_name
+                    winner = second_player
                 else:
                     winner = 'draw'
                     
                 results[winner] += 1
-                total_times[algo1_name].extend(result['times'][::2])
-                total_times[algo2_name].extend(result['times'][1::2])
+                
+                # 思考時間を記録
+                if i % 2 == 0:
+                    total_times[algo1_name].extend(result['times'][::2])  # 黒の手番の時間
+                    total_times[algo2_name].extend(result['times'][1::2])  # 白の手番の時間
+                else:
+                    total_times[algo2_name].extend(result['times'][::2])  # 黒の手番の時間
+                    total_times[algo1_name].extend(result['times'][1::2])  # 白の手番の時間
                 
                 # 統計情報を更新
                 self.update_stats(results, total_times)

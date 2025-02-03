@@ -23,9 +23,9 @@ class OthelloBoard:
                 if self.board[i][j] == self.EMPTY:
                     print(".", end=" ")
                 elif self.board[i][j] == self.BLACK:
-                    print("B", end=" ")
+                    print("○", end=" ")
                 else:
-                    print("W", end=" ")
+                    print("●", end=" ")
             print()
 
     def is_valid_move(self, row: int, col: int, player: int) -> bool:

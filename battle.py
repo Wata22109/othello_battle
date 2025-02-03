@@ -128,7 +128,6 @@ class TournamentSystem:
         self.algo1 = ttk.Combobox(main_frame, values=[
             "Minimax1",
             "Minimax2",
-            "Minimax3",
             "A*探索",
             "モンテカルロ"
         ])
@@ -139,7 +138,6 @@ class TournamentSystem:
         self.algo2 = ttk.Combobox(main_frame, values=[
             "Minimax1",
             "Minimax2",
-            "Minimax3",
             "A*探索",
             "モンテカルロ"
         ])
@@ -179,8 +177,6 @@ class TournamentSystem:
             return AI1Adapter(time_limit)
         elif algo_name == "Minimax2":
             return AI2Adapter(time_limit)
-        elif algo_name == "Minimax3":
-            return AI3Adapter(time_limit)
         elif algo_name == "A*探索":
             return AI4Adapter(time_limit)
         else:  # Monte Carlo
@@ -309,7 +305,7 @@ class TournamentSystem:
                 # GUI更新
                 self.draw_board(board)
                 self.root.update()
-                time.sleep(0.1)  # 動きを見やすくするため
+                time.sleep(0)  # 動きを見やすくするため
                 
             except Exception as e:
                 print(f"Error occurred: {e}")
